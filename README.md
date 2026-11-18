@@ -2,24 +2,24 @@
 
 [Español](README.es.md)
 
-wall. is a free, open-source wallpaper switcher for Windows 11. Keep your favorite images in one carousel, open it with **Alt+W**, and press **Enter** to put the selected image on your desktop.
+wall. is an open-source wallpaper switcher for Windows 11. Press **Alt+W** to browse your saved images and **Enter** to set the one in the center as your wallpaper.
 
 ## Download and run
 
-**Requires Windows 11, 64-bit (x64).**
+**Windows 11 x64.** No installer or administrator access needed.
 
-- **Quick start:** [Download wall.exe](https://github.com/UnaiSantanaAlonsoDAW/Wall/releases/latest/download/wall.exe), save it somewhere you can find it again, and double-click it.
-- **ZIP:** Open the [latest release](https://github.com/UnaiSantanaAlonsoDAW/Wall/releases/latest) and download `wall-<version>-windows-x64.zip` under **Assets**. Right-click the ZIP, choose **Extract All**, and open `wall.exe` in the extracted folder. The ZIP also includes the license and dependency notices.
+- [Download wall.exe](https://github.com/UnaiSantanaAlonsoDAW/Wall/releases/latest/download/wall.exe) and double-click it.
+- For the ZIP, download `wall-<version>-windows-x64.zip` from the [latest release](https://github.com/UnaiSantanaAlonsoDAW/Wall/releases/latest). Choose **Extract All**, then open `wall.exe` from the extracted folder.
 
-wall. is portable. It runs without an installer, an account, or administrator access. The release is unsigned, so Windows may show a SmartScreen prompt. Download it from this repository’s Releases page.
+Windows may show a SmartScreen prompt because the executable is unsigned.
+
+![The wall. carousel open over a Windows 11 desktop](docs/carousel.png)
 
 ## First wallpaper
 
 1. Open `wall.exe`. Click **Choose images** or press **Ctrl+O** to add local JPEG, PNG, or static WebP files. You can also drop files from Explorer onto the carousel.
 2. Browse with the arrow keys, the mouse wheel, or your trackpad. Click a side preview to bring it to the center.
 3. Press **Enter** or double-click the centered image to set it. Browsing only changes the preview. When you apply an image, Windows uses it on all monitors and keeps its current wallpaper fit. Applying also replaces any active Windows wallpaper slideshow.
-
-![wall. with three wallpaper previews on its dark glass carousel](docs/carousel.png)
 
 ## Everyday use
 
@@ -49,7 +49,7 @@ To remove wall., turn off **Start with Windows**, quit from the tray, and delete
 
 ## Source, builds and contributions
 
-wall. is open source under the [MIT License](LICENSE). Bug reports and pull requests are welcome. For Windows-specific issues, include your Windows build, the wall. version from Preferences, and the steps to reproduce the issue. [Open an issue](https://github.com/UnaiSantanaAlonsoDAW/Wall/issues)
+wall. is released under the [MIT License](LICENSE). If you [report a bug](https://github.com/UnaiSantanaAlonsoDAW/Wall/issues), include your Windows version, the wall. version shown in Preferences, and what you did before the problem appeared.
 
 Build on Windows x64 with Rust 1.99 or newer using the MSVC toolchain, and Visual Studio Build Tools with the C++ workload and Windows SDK:
 

@@ -2,24 +2,24 @@
 
 [English](README.md)
 
-wall. es una aplicación gratuita y de código abierto para cambiar el fondo de escritorio en Windows 11. Reúne tus imágenes favoritas en un carrusel, ábrelo con **Alt+W** y pulsa **Enter** para aplicar la que tengas seleccionada.
+wall. es un cambiador de fondos de código abierto para Windows 11. Pulsa **Alt+W** para ver tus imágenes y **Enter** para poner la del centro como fondo de escritorio.
 
 ## Descargar y abrir
 
-**Necesitas Windows 11 de 64 bits (x64).**
+**Windows 11 x64.** No hace falta instalar nada ni tener permisos de administrador.
 
-- **La forma más rápida:** [Descarga wall.exe](https://github.com/UnaiSantanaAlonsoDAW/Wall/releases/latest/download/wall.exe), guárdalo donde te venga bien y ábrelo con doble clic.
-- **Si prefieres un ZIP:** En la [última versión](https://github.com/UnaiSantanaAlonsoDAW/Wall/releases/latest), descarga `wall-<versión>-windows-x64.zip` en **Assets**. Haz clic derecho en el ZIP, elige **Extraer todo** y abre `wall.exe` desde la carpeta extraída. El ZIP incluye la licencia y los avisos de las dependencias.
+- [Descarga wall.exe](https://github.com/UnaiSantanaAlonsoDAW/Wall/releases/latest/download/wall.exe) y ábrelo con doble clic.
+- Si prefieres el ZIP, descarga `wall-<versión>-windows-x64.zip` desde la [última versión](https://github.com/UnaiSantanaAlonsoDAW/Wall/releases/latest), elige **Extraer todo** y abre `wall.exe` en la carpeta extraída.
 
-wall. es portátil. Puedes usarlo sin instalador, sin cuenta y sin permisos de administrador. El ejecutable se publica sin firma digital, así que Windows puede mostrar un aviso de SmartScreen. Descárgalo desde la página Releases de este repositorio.
+Windows puede mostrar un aviso de SmartScreen porque el ejecutable no lleva firma digital.
+
+![El carrusel de wall. abierto sobre el escritorio de Windows 11](docs/carousel.png)
 
 ## Pon tu primer fondo
 
 1. Abre `wall.exe`. Pulsa **Choose images** o **Ctrl+O** y elige imágenes JPEG, PNG o WebP estáticas de tu equipo. También puedes arrastrarlas desde el Explorador al carrusel.
 2. Recorre las imágenes con las flechas, la rueda o el panel táctil. Si haces clic en una vista lateral, se mueve al centro.
 3. Pulsa **Enter** o haz doble clic en la imagen central para aplicarla. Hasta ese momento solo cambia la vista previa. Windows usa el mismo fondo en todos los monitores y mantiene el ajuste actual de la imagen. Si tienes una presentación de fondos activa, se sustituye al aplicar uno.
-
-![Carrusel de wall. con tres vistas previas sobre cristal oscuro](docs/carousel.png)
 
 ## Uso diario
 
@@ -49,7 +49,7 @@ Para quitar wall., desactiva **Start with Windows**, sal desde la bandeja y borr
 
 ## Código, compilación y contribuciones
 
-wall. es software de código abierto bajo la [licencia MIT](LICENSE). Puedes abrir una incidencia o enviar un pull request. Si encuentras un fallo, indica tu versión de Windows, la versión de wall. que aparece en Preferencias y cómo reproducirlo. [Abrir una incidencia](https://github.com/UnaiSantanaAlonsoDAW/Wall/issues)
+El proyecto se publica bajo la [licencia MIT](LICENSE). Si encuentras un fallo, [abre una incidencia](https://github.com/UnaiSantanaAlonsoDAW/Wall/issues) e indica tu versión de Windows, la versión de wall. que aparece en Preferencias y qué hiciste antes de que ocurriera.
 
 Para compilar en Windows x64 necesitas Rust 1.99 o posterior con la cadena de herramientas MSVC, y Visual Studio Build Tools con C++ y el SDK de Windows:
 

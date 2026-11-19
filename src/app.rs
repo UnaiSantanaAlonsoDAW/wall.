@@ -320,16 +320,11 @@ impl WallApp {
     }
 
     fn expanded_grid(&self, center: Pos2) -> Option<Grid> {
-        let (_, open) = self
-            .gallery_bounds
-            .as_ref()?
-            .sizes(self.ctx.pixels_per_point());
-        let outer = Rect::from_center_size(center, open);
-        let area = Rect::from_min_max(
-            outer.min + Vec2::new(28.0, 36.0),
-            outer.max - Vec2::new(28.0, 48.0),
-        );
-        Some(Grid::new(area, self.paths.len()))
+        Some(self.gallery_bounds.as_ref()?.grid(
+            center,
+            self.ctx.pixels_per_point(),
+            self.paths.len(),
+        ))
     }
 
     fn reveal_gallery_selection(&mut self) {
@@ -356,11 +351,14 @@ impl WallApp {
         if self.paths.is_empty() && expanded {
             return;
         }
-        if self.gallery_bounds.is_none() {
+        let Some(bounds) = &mut self.gallery_bounds else {
             self.tell("Gallery cannot resize on this monitor");
             return;
-        }
+        };
         let at_rest = !self.gallery.active();
+        if expanded && at_rest && !self.gallery.expanded() {
+            bounds.prepare(self.paths.len());
+        }
         self.gallery.target(expanded, self.reduced_motion);
         if expanded {
             self.thumbnails.set_gallery(true);

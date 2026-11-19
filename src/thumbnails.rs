@@ -13,7 +13,7 @@ use std::{
 };
 
 const MAX_TEXTURES: usize = 16;
-const GALLERY_TEXTURES: usize = 40;
+const GALLERY_TEXTURES: usize = 24;
 const MAX_QUEUED: usize = 12;
 const THUMB_WIDTH: u32 = 1280;
 const THUMB_HEIGHT: u32 = 720;

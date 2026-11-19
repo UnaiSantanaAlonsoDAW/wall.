@@ -1,5 +1,14 @@
 # wall. on Windows 11
 
+## 0.3.1 · Gallery composition
+
+19 November 2026. The gallery sizes its window and previews from a single layout based on the monitor work area, DPI and collection size. Wide desktops show up to three columns. The window reserves a second row when the collection and work area call for it. The existing spring and native window are used for both directions of the transition.
+
+- Inspected the native gallery with 1, 2, 3, 6, 10, 30 and 150 images. On a 1920 × 1080 display at 96 DPI, three images used one row in a 1560 × 500 px window. Six and 150 used a 1560 × 653 px window with 489 × 275 px preview frames. The six-image set fit without scrolling.
+- Keyboard navigation brought the last image into view in the collections of 10, 30 and 150. I scrolled away from image 150 and confirmed it was centered after returning to the carousel. I also checked rapid reversal and return from the second row. Native resize traces kept the window centered to within half a physical pixel.
+- The gallery still decodes thumbnails asynchronously for visible rows and keeps a bounded cache of 24 entries. Carousel and hidden mode retain the 16-entry limit.
+- Formatting, Clippy and all 40 tests passed. Coverage includes laptop, portrait and ultrawide work areas, simulated DPI changes, and geometry on the two connected monitors. Both physical monitors use the same DPI. Visual verification used the native Windows app and point-in-time screenshots.
+
 ## 0.3.0 · Adaptive gallery
 
 19 November 2026. The gallery uses the same images, selection and native Acrylic window as the carousel. The existing critically damped motion drives both the window bounds and the shared image rectangles. The native window applies resize requests between frames and anchors them to the work area captured when it opened. [SetWindowPos](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowpos) · [GetMonitorInfoW](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getmonitorinfow)

@@ -1288,6 +1288,9 @@ pub fn show_overlay(raw: isize, cursor: Option<(i32, i32)>) {
 /// HWND keeps expansion on its original monitor even if the pointer moves.
 pub struct GalleryBounds {
     collapsed: RECT,
+    work: RECT,
+    dpi: u32,
+    layout: crate::gallery::Layout,
     expanded: RECT,
     requested: RECT,
 }
@@ -1312,29 +1315,29 @@ impl GalleryBounds {
     }
 
     fn new(collapsed: RECT, work: RECT, dpi: u32, items: usize) -> Self {
-        let scale = f64::from(if dpi == 0 { 96 } else { dpi }) / 96.0;
+        let scale = (if dpi == 0 { 96 } else { dpi }) as f32 / 96.0;
         let margin = (32.0 * scale).round() as i32;
         let available_width = work.right - work.left;
         let available_height = work.bottom - work.top;
-        // Cap both dimensions in logical pixels. A small work area can still
-        // widen or grow vertically where it has room.
-        // Short collections need less glass around their one or two rows.
-        // Choose these bounds once per opening so an import won't jolt the grid.
-        let (max_width, max_height) = if items <= 10 {
-            (1380.0, 590.0)
-        } else {
-            (1560.0, 860.0)
-        };
-        let width = (available_width - margin)
-            .min((max_width * scale).round() as i32)
-            .max(collapsed.right - collapsed.left);
-        let height = (available_height - margin)
-            .min((max_height * scale).round() as i32)
-            .max(collapsed.bottom - collapsed.top);
+        let compact = egui::vec2(
+            (collapsed.right - collapsed.left) as f32,
+            (collapsed.bottom - collapsed.top) as f32,
+        );
+        let usable = egui::vec2(
+            (available_width - margin) as f32,
+            (available_height - margin) as f32,
+        )
+        .max(compact);
+        let layout = crate::gallery::Layout::new(usable / scale, compact / scale, items);
+        let width = ((layout.size.x * scale).ceil() as i32).min(usable.x as i32);
+        let height = ((layout.size.y * scale).ceil() as i32).min(usable.y as i32);
         let left = work.left + (available_width - width) / 2;
         let top = work.top + (available_height - height) / 2;
         Self {
             collapsed,
+            work,
+            dpi,
+            layout,
             expanded: RECT {
                 left,
                 top,
@@ -1343,6 +1346,21 @@ impl GalleryBounds {
             },
             requested: collapsed,
         }
+    }
+
+    pub fn prepare(&mut self, items: usize) {
+        *self = Self::new(self.collapsed, self.work, self.dpi, items);
+    }
+
+    pub fn grid(
+        &self,
+        center: egui::Pos2,
+        pixels_per_point: f32,
+        items: usize,
+    ) -> crate::gallery::Grid {
+        let (_, size) = self.sizes(pixels_per_point);
+        self.layout
+            .grid(egui::Rect::from_center_size(center, size), items)
     }
 
     pub fn sizes(&self, pixels_per_point: f32) -> (egui::Vec2, egui::Vec2) {
@@ -2110,7 +2128,7 @@ mod tests {
             let gallery = GalleryBounds::new(collapsed, work, dpi, 250);
             let (small, large) = gallery.sizes(dpi as f32 / 96.0);
             assert!(large.x >= small.x && large.y >= small.y);
-            assert!(large.x <= 1561.0 && large.y <= 861.0);
+            assert!(large.x <= 1561.0 && large.y <= 801.0);
             for step in 0..=20 {
                 let rect = gallery.rect_at(step as f32 / 20.0);
                 assert_within(rect, work);
@@ -2119,9 +2137,9 @@ mod tests {
             }
             assert_eq!(gallery.rect_at(0.0), collapsed);
             assert_eq!(gallery.rect_at(1.0), gallery.expanded);
-            let (_, compact) =
-                GalleryBounds::new(collapsed, work, dpi, 10).sizes(dpi as f32 / 96.0);
-            assert!(compact.x <= 1381.0 && compact.y <= 591.0);
+            let (_, single_row) =
+                GalleryBounds::new(collapsed, work, dpi, 1).sizes(dpi as f32 / 96.0);
+            assert!(single_row.y <= large.y && single_row.y <= 502.0);
         }
     }
 

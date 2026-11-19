@@ -3,6 +3,7 @@
 mod app;
 mod carousel;
 mod core;
+mod gallery;
 mod platform;
 mod startup;
 mod thumbnails;

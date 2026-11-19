@@ -13,6 +13,7 @@ use std::{
 };
 
 const MAX_TEXTURES: usize = 16;
+const GALLERY_TEXTURES: usize = 40;
 const MAX_QUEUED: usize = 12;
 const THUMB_WIDTH: u32 = 1280;
 const THUMB_HEIGHT: u32 = 720;
@@ -66,6 +67,7 @@ struct Validated {
 pub struct Thumbnails {
     ctx: egui::Context,
     entries: HashMap<PathBuf, Entry>,
+    capacity: usize,
     queue: Arc<(Mutex<Queue>, Condvar)>,
     replies: mpsc::Receiver<Reply>,
     worker: Option<JoinHandle<()>>,
@@ -141,6 +143,7 @@ impl Thumbnails {
         Self {
             ctx,
             entries: HashMap::new(),
+            capacity: MAX_TEXTURES,
             queue,
             replies,
             worker,
@@ -211,7 +214,7 @@ impl Thumbnails {
         }
         let id = self.clock;
         if !self.entries.contains_key(path) {
-            evict_lru(&mut self.entries);
+            evict_lru(&mut self.entries, self.capacity);
             self.entries.insert(
                 path.to_path_buf(),
                 Entry {
@@ -248,6 +251,35 @@ impl Thumbnails {
     /// Stop prefetching when the overlay is hidden. Retain resident images for
     /// instant reopening; release pending decoded pixels without GPU uploads.
     /// At most the single decode already in progress can finish in the worker.
+    pub fn set_gallery(&mut self, expanded: bool) {
+        self.capacity = if expanded {
+            GALLERY_TEXTURES
+        } else {
+            MAX_TEXTURES
+        };
+        while self.entries.len() > self.capacity {
+            evict_lru(&mut self.entries, self.capacity);
+        }
+    }
+
+    /// Cancel queued work left behind by a gallery scroll. The active decode
+    /// can finish normally, and any resident texture stays available.
+    pub fn retain_queued(&mut self, visible: &[PathBuf]) {
+        let (mutex, _) = &*self.queue;
+        let Ok(mut queue) = mutex.lock() else { return };
+        queue.requests.retain(|request| {
+            if visible.contains(&request.path) {
+                return true;
+            }
+            if let Some(entry) = self.entries.get_mut(&request.path)
+                && entry.id == request.id
+            {
+                entry.generation = self.generation.wrapping_sub(1);
+            }
+            false
+        });
+    }
+
     pub fn suspend(&mut self) {
         if let Ok(mut queue) = self.queue.0.lock() {
             queue.requests.clear();
@@ -281,8 +313,8 @@ impl Drop for Thumbnails {
     }
 }
 
-fn evict_lru(entries: &mut HashMap<PathBuf, Entry>) {
-    if entries.len() >= MAX_TEXTURES {
+fn evict_lru(entries: &mut HashMap<PathBuf, Entry>, capacity: usize) {
+    if entries.len() >= capacity {
         let oldest = entries
             .iter()
             .min_by_key(|(_, entry)| entry.touched)
@@ -354,8 +386,11 @@ fn load_thumbnail_at(path: &Path, cached: &Path) -> Result<Decoded, String> {
         .decode()
         .map_err(|e| format!("Cannot decode image: {e}"))?;
     let (width, height) = (original.width(), original.height());
-    let thumbnail = original.thumbnail(THUMB_WIDTH, THUMB_HEIGHT).to_rgba8();
-    drop(original);
+    let thumbnail = if width <= THUMB_WIDTH && height <= THUMB_HEIGHT {
+        original.into_rgba8()
+    } else {
+        original.thumbnail(THUMB_WIDTH, THUMB_HEIGHT).into_rgba8()
+    };
     // Cache failures do not make readable originals unusable (e.g. disk full).
     let mut bytes = b"WTH2".to_vec();
     bytes.extend(width.to_le_bytes());
@@ -518,6 +553,7 @@ mod tests {
         let (tx, replies) = mpsc::channel();
         let mut thumbnails = Thumbnails {
             ctx,
+            capacity: MAX_TEXTURES,
             entries: HashMap::from([
                 (
                     ready.clone(),
@@ -601,7 +637,7 @@ mod tests {
         assert!(temp.0.join("unrelated.png").exists());
         let mut entries = HashMap::new();
         for i in 0..100 {
-            evict_lru(&mut entries);
+            evict_lru(&mut entries, MAX_TEXTURES);
             entries.insert(
                 PathBuf::from(i.to_string()),
                 Entry {

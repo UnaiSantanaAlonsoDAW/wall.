@@ -27,6 +27,8 @@ Windows may show a SmartScreen prompt because the executable is unsigned.
 | --- | --- |
 | **Alt+W** | Opens or closes the carousel. It opens on the monitor under the pointer. |
 | **← / →** | Moves to the previous or next wallpaper. |
+| **↓** | Opens the gallery from the carousel or moves down a row in the gallery. |
+| **↑ / Backspace** | In the gallery, Up moves to the previous row and returns to the carousel from the first row. Backspace returns from any row. |
 | **Home / End** | Jumps to the first or last image. |
 | **Enter** | Applies the selected wallpaper and closes the carousel. |
 | **Esc** | Closes the carousel or goes back from Preferences. |
@@ -36,6 +38,8 @@ Windows may show a SmartScreen prompt because the executable is unsigned.
 | **Ctrl+Q** | Quits wall. |
 
 Closing the carousel leaves wall. in the notification area so the shortcut stays available. Right-click the tray icon to open wall., add images, open Preferences, or quit.
+
+Use the gallery to see more of your collection at once. Scroll to browse, click a thumbnail to select it, or double-click it to apply it. The menu also switches between Gallery and Carousel. Both views keep the same selection.
 
 In **Preferences** you can change the shortcut, choose **Glass** or **Solid**, and set the tray symbol to automatic, light or dark. **Automatic** follows the Windows taskbar theme. Glass is the default and may fall back to a solid surface when Windows disables transparency.
 

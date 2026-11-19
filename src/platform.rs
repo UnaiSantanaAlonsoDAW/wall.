@@ -48,6 +48,7 @@ const SHOW: u32 = WM_APP + 1;
 const COMMAND: u32 = WM_APP + 2;
 const TRAY: u32 = WM_APP + 3;
 const MOUSE_DOWN: u32 = WM_APP + 4;
+const GALLERY_RESIZE: u32 = WM_APP + 5;
 const VISIBILITY_INTENT: PCWSTR = w!("Wall.OverlayVisibilityIntent");
 
 // Window properties keep this synchronous on the UI thread, independently of
@@ -904,6 +905,21 @@ pub fn take_enter_time() -> Option<std::time::Instant> {
     ENTER_AT.with(|at| at.take())
 }
 
+thread_local! {
+    static GALLERY_RECT: std::cell::Cell<Option<(HWND, RECT)>> = const { std::cell::Cell::new(None) };
+}
+
+fn take_gallery_rect(window: HWND) -> Option<RECT> {
+    GALLERY_RECT.with(|pending| {
+        let (target, rect) = pending.get()?;
+        if target != window {
+            return None;
+        }
+        pending.set(None);
+        Some(rect)
+    })
+}
+
 unsafe extern "system" fn overlay_subclass(
     window: HWND,
     message: u32,
@@ -913,6 +929,26 @@ unsafe extern "system" fn overlay_subclass(
     _: usize,
 ) -> LRESULT {
     unsafe {
+        if message == GALLERY_RESIZE {
+            if let Some(rect) = take_gallery_rect(window) {
+                // Leave focus, Z-order, and the Acrylic setup in place.
+                if let Err(error) = SetWindowPos(
+                    window,
+                    None,
+                    rect.left,
+                    rect.top,
+                    rect.right - rect.left,
+                    rect.bottom - rect.top,
+                    SWP_NOACTIVATE | SWP_NOZORDER,
+                ) {
+                    diagnostics(format_args!("Cannot resize the gallery: {error}"));
+                } else {
+                    #[cfg(debug_assertions)]
+                    diagnostics(format_args!("gallery frame: {rect:?}"));
+                }
+            }
+            return LRESULT(0);
+        }
         #[cfg(debug_assertions)]
         if message == WM_KEYDOWN && wparam.0 == VK_RETURN.0 as usize {
             ENTER_AT.with(|at| at.set(Some(std::time::Instant::now())));
@@ -952,6 +988,7 @@ unsafe extern "system" fn overlay_subclass(
             );
         }
         if message == WM_NCDESTROY {
+            let _ = take_gallery_rect(window);
             let _ = RemovePropW(window, VISIBILITY_INTENT);
             let _ = RemoveWindowSubclass(window, Some(overlay_subclass), id);
         }
@@ -1209,6 +1246,7 @@ fn place_overlay(window: HWND, cursor: Option<(i32, i32)>) -> Result<(), String>
 pub fn show_overlay(raw: isize, cursor: Option<(i32, i32)>) {
     unsafe {
         let window = hwnd(raw);
+        let _ = take_gallery_rect(window);
         if let Err(error) = set_visibility_intent(window, true) {
             diagnostics(error);
             return;
@@ -1245,12 +1283,123 @@ pub fn show_overlay(raw: isize, cursor: Option<(i32, i32)>) {
         let _ = activated;
     }
 }
+
+/// Physical bounds for one presentation of the overlay. Capturing the placed
+/// HWND keeps expansion on its original monitor even if the pointer moves.
+pub struct GalleryBounds {
+    collapsed: RECT,
+    expanded: RECT,
+    requested: RECT,
+}
+
+impl GalleryBounds {
+    pub fn capture(raw: isize, items: usize) -> Result<Self, String> {
+        let window = hwnd(raw);
+        let mut collapsed = RECT::default();
+        let mut info = MONITORINFO {
+            cbSize: size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        let dpi = unsafe {
+            GetWindowRect(window, &mut collapsed).map_err(|e| e.to_string())?;
+            let monitor = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
+            GetMonitorInfoW(monitor, &mut info)
+                .ok()
+                .map_err(|e| e.to_string())?;
+            GetDpiForWindow(window)
+        };
+        Ok(Self::new(collapsed, info.rcWork, dpi, items))
+    }
+
+    fn new(collapsed: RECT, work: RECT, dpi: u32, items: usize) -> Self {
+        let scale = f64::from(if dpi == 0 { 96 } else { dpi }) / 96.0;
+        let margin = (32.0 * scale).round() as i32;
+        let available_width = work.right - work.left;
+        let available_height = work.bottom - work.top;
+        // Cap both dimensions in logical pixels. A small work area can still
+        // widen or grow vertically where it has room.
+        // Short collections need less glass around their one or two rows.
+        // Choose these bounds once per opening so an import won't jolt the grid.
+        let (max_width, max_height) = if items <= 10 {
+            (1380.0, 590.0)
+        } else {
+            (1560.0, 860.0)
+        };
+        let width = (available_width - margin)
+            .min((max_width * scale).round() as i32)
+            .max(collapsed.right - collapsed.left);
+        let height = (available_height - margin)
+            .min((max_height * scale).round() as i32)
+            .max(collapsed.bottom - collapsed.top);
+        let left = work.left + (available_width - width) / 2;
+        let top = work.top + (available_height - height) / 2;
+        Self {
+            collapsed,
+            expanded: RECT {
+                left,
+                top,
+                right: left + width,
+                bottom: top + height,
+            },
+            requested: collapsed,
+        }
+    }
+
+    pub fn sizes(&self, pixels_per_point: f32) -> (egui::Vec2, egui::Vec2) {
+        let size = |rect: RECT| {
+            egui::vec2(
+                (rect.right - rect.left) as f32,
+                (rect.bottom - rect.top) as f32,
+            ) / pixels_per_point
+        };
+        (size(self.collapsed), size(self.expanded))
+    }
+
+    fn rect_at(&self, progress: f32) -> RECT {
+        let blend = |from: i32, to: i32| {
+            let progress = f64::from(progress.clamp(0.0, 1.0));
+            (f64::from(from) + f64::from(to - from) * progress).round() as i32
+        };
+        RECT {
+            left: blend(self.collapsed.left, self.expanded.left),
+            top: blend(self.collapsed.top, self.expanded.top),
+            right: blend(self.collapsed.right, self.expanded.right),
+            bottom: blend(self.collapsed.bottom, self.expanded.bottom),
+        }
+    }
+
+    pub fn resize(&mut self, raw: isize, progress: f32) -> Result<(), String> {
+        let rect = self.rect_at(progress);
+        if rect != self.requested {
+            // Glow reads the current client size again after running the UI.
+            // Resize once the frame returns to the message pump so input and
+            // paint share the old size and winit can deliver normal WM_SIZE.
+            let window = hwnd(raw);
+            GALLERY_RECT.with(|pending| {
+                let prev = pending.replace(Some((window, rect)));
+                if !prev.is_some_and(|(target, _)| target == window)
+                    && let Err(error) =
+                        unsafe { PostMessageW(Some(window), GALLERY_RESIZE, WPARAM(0), LPARAM(0)) }
+                {
+                    pending.set(prev);
+                    return Err(error.to_string());
+                }
+                Ok(())
+            })?;
+            self.requested = rect;
+        }
+        Ok(())
+    }
+}
+
 pub fn hide_overlay(raw: isize) {
     unsafe {
-        if let Err(error) = set_visibility_intent(hwnd(raw), false) {
+        let window = hwnd(raw);
+        let _ = take_gallery_rect(window);
+        if let Err(error) = set_visibility_intent(window, false) {
             diagnostics(error);
         }
-        let _ = ShowWindow(hwnd(raw), SW_HIDE);
+        let _ = ShowWindow(window, SW_HIDE);
     }
 }
 
@@ -1879,6 +2028,7 @@ mod tests {
             )
             .unwrap();
             let _guard = DesktopGuard(window, prior);
+            assert!(SetWindowSubclass(window, Some(overlay_subclass), 0x57414c4c, 0).as_bool());
             let mut monitors = Vec::<HMONITOR>::new();
             EnumDisplayMonitors(
                 None,
@@ -1906,10 +2056,72 @@ mod tests {
                     let dpi = GetDpiForWindow(window);
                     assert_eq!(actual, centered_overlay(work, dpi));
                     assert_eq!(MonitorFromWindow(window, MONITOR_DEFAULTTONULL), monitor);
+                    let original = actual;
+                    let raw = window.0 as isize;
+                    let mut gallery = GalleryBounds::capture(raw, 250).unwrap();
+                    for progress in [0.25, 0.5, 1.0, 0.5, 0.0] {
+                        gallery.resize(raw, progress).unwrap();
+                        let mut message = MSG::default();
+                        if PeekMessageW(
+                            &mut message,
+                            Some(window),
+                            GALLERY_RESIZE,
+                            GALLERY_RESIZE,
+                            PM_REMOVE,
+                        )
+                        .as_bool()
+                        {
+                            DispatchMessageW(&message);
+                        }
+                        GetWindowRect(window, &mut actual).unwrap();
+                        assert_eq!(actual, gallery.rect_at(progress));
+                        assert_eq!(MonitorFromWindow(window, MONITOR_DEFAULTTONULL), monitor);
+                        assert_within(actual, work);
+                    }
+                    assert_eq!(actual, original);
                     assert!(!IsWindowVisible(window).as_bool());
                     eprintln!("point={point:?} dpi={dpi} work={work:?} result={actual:?}");
                 }
             }
+        }
+    }
+
+    fn assert_within(rect: RECT, work: RECT) {
+        assert!(rect.left >= work.left && rect.right <= work.right);
+        assert!(rect.top >= work.top && rect.bottom <= work.bottom);
+    }
+
+    #[test]
+    fn gallery_bounds_stay_centered_and_restore_the_exact_collapsed_rect() {
+        for (left, top, width, height, dpi) in [
+            (0, 0, 1921, 1041, 96),
+            (-2560, -290, 2560, 1400, 144),
+            (1920, -45, 4800, 2800, 192),
+            (0, -1200, 850, 1115, 120),
+            (-800, 1080, 800, 600, 216),
+        ] {
+            let work = RECT {
+                left,
+                top,
+                right: left + width,
+                bottom: top + height,
+            };
+            let collapsed = centered_overlay(work, dpi);
+            let gallery = GalleryBounds::new(collapsed, work, dpi, 250);
+            let (small, large) = gallery.sizes(dpi as f32 / 96.0);
+            assert!(large.x >= small.x && large.y >= small.y);
+            assert!(large.x <= 1561.0 && large.y <= 861.0);
+            for step in 0..=20 {
+                let rect = gallery.rect_at(step as f32 / 20.0);
+                assert_within(rect, work);
+                assert!((rect.left + rect.right - work.left - work.right).abs() <= 2);
+                assert!((rect.top + rect.bottom - work.top - work.bottom).abs() <= 2);
+            }
+            assert_eq!(gallery.rect_at(0.0), collapsed);
+            assert_eq!(gallery.rect_at(1.0), gallery.expanded);
+            let (_, compact) =
+                GalleryBounds::new(collapsed, work, dpi, 10).sizes(dpi as f32 / 96.0);
+            assert!(compact.x <= 1381.0 && compact.y <= 591.0);
         }
     }
 

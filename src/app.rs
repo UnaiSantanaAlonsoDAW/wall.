@@ -1,7 +1,8 @@
 use crate::{
     carousel::{Carousel, WheelUnit},
     core::{Settings, Store, TrayAppearance, same_path},
-    platform::{self, Composition, Platform, PlatformEvent},
+    gallery::{Direction, Grid, Transition},
+    platform::{self, Composition, GalleryBounds, Platform, PlatformEvent},
     thumbnails::{ThumbState, Thumbnails},
     worker::{self, Command, Worker},
 };
@@ -89,6 +90,9 @@ pub struct WallApp {
     startup: Option<bool>,
     draft_startup: bool,
     carousel: Carousel,
+    gallery: Transition,
+    gallery_bounds: Option<GalleryBounds>,
+    gallery_scroll: f32,
     current: Option<PathBuf>,
     state: OverlayState,
     first: bool,
@@ -149,6 +153,9 @@ impl WallApp {
             draft_startup: false,
             settings,
             carousel: Carousel::new(0),
+            gallery: Transition::default(),
+            gallery_bounds: None,
+            gallery_scroll: 0.0,
             current: None,
             state: OverlayState::Hidden,
             first: true,
@@ -203,7 +210,13 @@ impl WallApp {
         cursor: Option<(i32, i32)>,
     ) {
         self.state = OverlayState::Browsing;
+        let follow_desktop = center_current && !self.gallery.expanded();
         if center_current {
+            self.gallery = Transition::default();
+            self.gallery_scroll = 0.0;
+            self.thumbnails.set_gallery(false);
+        }
+        if follow_desktop {
             let selected = self
                 .current
                 .as_ref()
@@ -221,8 +234,14 @@ impl WallApp {
             self.tell(error);
         }
         platform::show_overlay(self.hwnd, cursor);
+        self.gallery_bounds = GalleryBounds::capture(self.hwnd, self.paths.len()).ok();
+        if self.gallery.expanded() {
+            self.thumbnails.set_gallery(true);
+            self.gallery.target(true, true);
+            self.resize_gallery();
+        }
         self.query = self.query.wrapping_add(1);
-        self.center_on_reply = center_current.then_some((self.query, self.interaction));
+        self.center_on_reply = follow_desktop.then_some((self.query, self.interaction));
         self.send(Command::Current(self.query));
         ctx.request_repaint();
     }
@@ -242,6 +261,7 @@ impl WallApp {
         self.center_on_reply = None;
         self.carousel.snap(self.carousel.target);
         self.thumbnails.suspend();
+        self.thumbnails.set_gallery(false);
         let _ = self.platform.set_overlay(self.hwnd, false);
         platform::hide_overlay(self.hwnd);
         #[cfg(debug_assertions)]
@@ -294,7 +314,73 @@ impl WallApp {
 
     fn select(&mut self, index: usize) {
         if self.carousel.select(index, self.paths.len()) {
+            self.reveal_gallery_selection();
             self.interacted();
+        }
+    }
+
+    fn expanded_grid(&self, center: Pos2) -> Option<Grid> {
+        let (_, open) = self
+            .gallery_bounds
+            .as_ref()?
+            .sizes(self.ctx.pixels_per_point());
+        let outer = Rect::from_center_size(center, open);
+        let area = Rect::from_min_max(
+            outer.min + Vec2::new(28.0, 36.0),
+            outer.max - Vec2::new(28.0, 48.0),
+        );
+        Some(Grid::new(area, self.paths.len()))
+    }
+
+    fn reveal_gallery_selection(&mut self) {
+        if self.gallery.expanded()
+            && let Some(grid) = self.expanded_grid(Pos2::ZERO)
+        {
+            self.scroll_gallery(
+                &grid,
+                grid.reveal(self.carousel.target, self.gallery_scroll),
+            );
+        }
+    }
+
+    fn scroll_gallery(&mut self, grid: &Grid, scroll: f32) {
+        if self.gallery_scroll != scroll {
+            self.gallery_scroll = scroll;
+            self.thumbnails
+                .retain_queued(&self.paths[grid.visible(scroll)]);
+            self.interacted();
+        }
+    }
+
+    fn set_gallery(&mut self, expanded: bool) {
+        if self.paths.is_empty() && expanded {
+            return;
+        }
+        if self.gallery_bounds.is_none() {
+            self.tell("Gallery cannot resize on this monitor");
+            return;
+        }
+        let at_rest = !self.gallery.active();
+        self.gallery.target(expanded, self.reduced_motion);
+        if expanded {
+            self.thumbnails.set_gallery(true);
+            if at_rest {
+                self.reveal_gallery_selection();
+            }
+        } else if at_rest {
+            self.carousel.snap(self.carousel.target);
+        }
+        self.interacted();
+    }
+
+    fn resize_gallery(&mut self) {
+        if let Some(bounds) = &mut self.gallery_bounds
+            && let Err(error) = bounds.resize(self.hwnd, self.gallery.progress())
+        {
+            self.gallery = Transition::default();
+            self.gallery_bounds = None;
+            self.thumbnails.set_gallery(false);
+            self.tell(error);
         }
     }
 
@@ -412,7 +498,12 @@ impl WallApp {
                         && context.epoch == self.interaction
                         && self.carousel.is_settled()
                     {
-                        self.carousel.select(index, self.paths.len());
+                        self.select(index);
+                    }
+                    if self.paths.is_empty() && self.gallery.expanded() {
+                        self.set_gallery(false);
+                    } else if self.carousel.target != old_index {
+                        self.reveal_gallery_selection();
                     }
                     if self.paths.len() > old_len {
                         self.imported_start = Some(old_len);
@@ -525,29 +616,42 @@ impl WallApp {
         if self.state != OverlayState::Browsing || self.applying || ctx.text_edit_focused() {
             return;
         }
-        let mut moved = false;
-        ctx.input_mut(|i| {
-            if i.consume_key(egui::Modifiers::NONE, Key::ArrowLeft)
-                | i.consume_key(egui::Modifiers::NONE, Key::ArrowUp)
-            {
-                moved |= self.carousel.step(-1, self.paths.len());
-            }
-            if i.consume_key(egui::Modifiers::NONE, Key::ArrowRight)
-                | i.consume_key(egui::Modifiers::NONE, Key::ArrowDown)
-            {
-                moved |= self.carousel.step(1, self.paths.len());
-            }
-            if i.consume_key(egui::Modifiers::NONE, Key::Home) {
-                moved |= self.carousel.select(0, self.paths.len());
-            }
-            if i.consume_key(egui::Modifiers::NONE, Key::End) {
-                moved |= self
-                    .carousel
-                    .select(self.paths.len().saturating_sub(1), self.paths.len());
-            }
+        // Keep the native event order even when two opposite arrows fall in
+        // one frame. The last key should win a mid-transition reversal.
+        let keys = ctx.input_mut(|i| {
+            let mut keys = Vec::new();
+            i.events.retain(|event| {
+                if let egui::Event::Key {
+                    key,
+                    pressed: true,
+                    modifiers,
+                    ..
+                } = event
+                    && modifiers.matches_logically(egui::Modifiers::NONE)
+                    && matches!(
+                        key,
+                        Key::ArrowLeft
+                            | Key::ArrowRight
+                            | Key::ArrowUp
+                            | Key::ArrowDown
+                            | Key::Home
+                            | Key::End
+                            | Key::Backspace
+                    )
+                {
+                    keys.push(*key);
+                    false
+                } else {
+                    true
+                }
+            });
+            keys
         });
-        if moved {
-            self.interacted();
+        let before = self.interaction;
+        for key in keys {
+            self.navigate(key);
+        }
+        if before != self.interaction {
             ctx.memory_mut(|m| {
                 if let Some(id) = m.focused() {
                     m.surrender_focus(id);
@@ -576,8 +680,56 @@ impl WallApp {
         }
     }
 
+    fn navigate(&mut self, key: Key) {
+        let index = self.carousel.target;
+        let last = self.paths.len().saturating_sub(1);
+        match key {
+            Key::Home => self.select(0),
+            Key::End => self.select(last),
+            Key::ArrowDown if !self.gallery.expanded() => self.set_gallery(true),
+            Key::Backspace if self.gallery.expanded() => self.set_gallery(false),
+            Key::ArrowUp if self.gallery.expanded() && self.gallery.active() => {
+                self.set_gallery(false);
+            }
+            _ => {
+                if self.gallery.expanded() {
+                    if let Some(grid) = self.expanded_grid(Pos2::ZERO) {
+                        let direction = match key {
+                            Key::ArrowLeft => Direction::Left,
+                            Key::ArrowRight => Direction::Right,
+                            Key::ArrowUp => Direction::Up,
+                            Key::ArrowDown => Direction::Down,
+                            _ => return,
+                        };
+                        if let Some(next) = grid.move_selection(index, direction) {
+                            self.select(next);
+                        } else {
+                            self.set_gallery(false);
+                        }
+                    }
+                } else {
+                    let delta = match key {
+                        Key::ArrowLeft => -1,
+                        Key::ArrowRight => 1,
+                        _ => return,
+                    };
+                    if self.carousel.step(delta, self.paths.len()) {
+                        self.interacted();
+                    }
+                }
+            }
+        }
+    }
+
     fn wheel(&mut self, ctx: &egui::Context) {
         if self.state != OverlayState::Browsing || self.applying || egui::Popup::is_any_open(ctx) {
+            return;
+        }
+        if self.gallery.expanded() {
+            if let Some(grid) = self.expanded_grid(Pos2::ZERO) {
+                let delta = ctx.input(|i| i.smooth_scroll_delta.y);
+                self.scroll_gallery(&grid, grid.clamp_scroll(self.gallery_scroll - delta));
+            }
             return;
         }
         let events = ctx.input(|i| i.events.clone());
@@ -627,27 +779,89 @@ impl WallApp {
         );
     }
 
-    fn gallery(&mut self, ui: &mut egui::Ui, bounds: Rect) {
+    fn browse(&mut self, ui: &mut egui::Ui, outer: Rect) {
+        let progress = self.gallery.progress();
+        let grid = (progress > 0.0)
+            .then(|| self.expanded_grid(outer.center()))
+            .flatten();
+        let collapsed = self.gallery_bounds.as_ref().map_or(outer.size(), |bounds| {
+            bounds.sizes(self.ctx.pixels_per_point()).0
+        });
+        let carousel_bounds =
+            Rect::from_center_size(outer.center(), collapsed).shrink2(Vec2::new(24.0, 0.0));
+        let bounds = grid
+            .as_ref()
+            .map_or(carousel_bounds, |grid| {
+                carousel_bounds.lerp_towards(&grid.viewport(), progress)
+            })
+            .intersect(outer);
         let previous_clip = ui.clip_rect();
         ui.set_clip_rect(previous_clip.intersect(bounds));
-        let geometry = Geometry::new(bounds);
+        let geometry = Geometry::new(carousel_bounds);
         let position = self.carousel.position;
         let start = (position.floor() as usize).saturating_sub(3);
         let end = ((position.ceil() as usize).saturating_add(4)).min(self.paths.len());
-        let mut indices: Vec<_> = (start..end).collect();
-        indices.sort_by(|a, b| {
-            ((*b as f64 - position).abs()).total_cmp(&(*a as f64 - position).abs())
-        });
+        let carousel_indices = start..end;
+        let mut indices: Vec<_> = if progress < 1.0 {
+            carousel_indices.clone().collect()
+        } else {
+            Vec::new()
+        };
+        if let Some(grid) = &grid {
+            self.gallery_scroll = grid.clamp_scroll(self.gallery_scroll);
+            indices.extend(
+                grid.visible(self.gallery_scroll)
+                    .filter(|index| progress == 1.0 || !carousel_indices.contains(index)),
+            );
+        }
+        if progress < 1.0 {
+            indices.sort_by(|a, b| {
+                ((*b as f64 - position).abs()).total_cmp(&(*a as f64 - position).abs())
+            });
+        }
         let mut clicked = None;
         let mut apply = None;
         let mut remove = None;
         for index in indices {
             let distance = index as f64 - position;
-            let image_rect = geometry.image(distance as f32);
-            if !image_rect.intersects(bounds) {
+            let carousel_rect = geometry.image(distance as f32);
+            let in_carousel =
+                carousel_indices.contains(&index) && carousel_rect.intersects(carousel_bounds);
+            let (image_rect, opacity) = if let Some(grid) = &grid {
+                let viewport = grid.viewport();
+                let tile = grid.rect(index, self.gallery_scroll);
+                if progress == 1.0 {
+                    (tile, 1.0)
+                } else if in_carousel {
+                    // Keep an off-screen destination just beyond the clip, so
+                    // collapsing after a long scroll still has a short path.
+                    let y = tile.center().y.clamp(
+                        viewport.top() - tile.height(),
+                        viewport.bottom() + tile.height(),
+                    );
+                    let destination =
+                        Rect::from_center_size(Pos2::new(tile.center().x, y), tile.size());
+                    let alpha = if tile.intersects(viewport) {
+                        1.0
+                    } else {
+                        1.0 - progress
+                    };
+                    (carousel_rect.lerp_towards(&destination, progress), alpha)
+                } else {
+                    let start = Rect::from_center_size(
+                        tile.center() - Vec2::new(0.0, 16.0),
+                        tile.size() * 0.92,
+                    );
+                    (start.lerp_towards(&tile, progress), progress * progress)
+                }
+            } else {
+                (carousel_rect, 1.0)
+            };
+            if opacity <= 0.01 || !image_rect.intersects(bounds) {
                 continue;
             }
-            let weight = (1.0 - distance.abs().min(1.0)) as f32;
+            let selected = index == self.carousel.target;
+            let weight = (1.0 - distance.abs().min(1.0)) as f32 * (1.0 - progress);
             let path = &self.paths[index];
             let name = filename(path);
             let response = ui.interact(
@@ -663,7 +877,8 @@ impl WallApp {
                     &name,
                 )
             });
-            let painter = ui.painter().with_clip_rect(bounds);
+            let mut painter = ui.painter().with_clip_rect(bounds);
+            painter.multiply_opacity(opacity);
             if weight > 0.05 {
                 painter.add(
                     egui::epaint::Shadow {
@@ -681,15 +896,29 @@ impl WallApp {
                     width,
                     height,
                 } => {
-                    let tint = Color32::from_white_alpha((196.0 + 59.0 * weight) as u8);
+                    let brightness = 196.0 + 59.0 * (weight + progress);
+                    let tint = Color32::from_white_alpha((brightness * opacity) as u8);
+                    let source = texture.size_vec2();
+                    let fit = (image_rect.width() / source.x).min(image_rect.height() / source.y);
+                    let fitted = if progress > 0.0 {
+                        Rect::from_center_size(
+                            image_rect.center(),
+                            egui::lerp(image_rect.size()..=source * fit, progress),
+                        )
+                    } else {
+                        image_rect
+                    };
+                    if progress > 0.0 && fitted.size() != image_rect.size() {
+                        painter.rect_filled(image_rect, 7.0, Color32::from_black_alpha(85));
+                    }
                     egui::Image::from_texture(&texture)
-                        .uv(crop_uv(texture.size_vec2(), image_rect.size()))
+                        .uv(crop_uv(source, fitted.size()))
                         .tint(tint)
                         .corner_radius(7.0)
-                        .paint_at(ui, image_rect);
+                        .paint_at(ui, fitted);
                     response.clone().on_hover_text(format!(
                         "{name}\n{width} × {height}\n{}",
-                        if index == self.carousel.target && self.carousel.is_settled() {
+                        if selected && (self.gallery.expanded() || self.carousel.is_settled()) {
                             "Double-click to set wallpaper"
                         } else {
                             "Click to preview"
@@ -726,28 +955,32 @@ impl WallApp {
                         .on_hover_text(format!("{error}\nRight-click to remove this reference"));
                 }
             }
-            if weight > 0.0 || response.has_focus() {
+            if weight > 0.0 || (selected && progress > 0.0) || response.has_focus() {
                 painter.rect_stroke(
                     image_rect,
                     7.0,
                     Stroke::new(
                         1.0,
-                        Color32::from_white_alpha(if response.has_focus() {
-                            210
+                        if response.has_focus() {
+                            Color32::from_white_alpha(210)
+                        } else if selected && progress > 0.0 {
+                            Color32::from_white_alpha((60.0 * weight) as u8)
+                                .lerp_to_gamma(ACCENT, progress)
                         } else {
-                            (60.0 * weight) as u8
-                        }),
+                            Color32::from_white_alpha((60.0 * weight) as u8)
+                        },
                     ),
                     StrokeKind::Inside,
                 );
             }
-            if self.current.as_ref().is_some_and(|p| same_path(path, p))
+            if progress < 1.0
+                && self.current.as_ref().is_some_and(|p| same_path(path, p))
                 && index != self.carousel.target
             {
                 painter.circle_filled(
                     image_rect.center_bottom() + Vec2::new(0.0, 10.0),
                     2.3,
-                    ACCENT,
+                    ACCENT.gamma_multiply(1.0 - progress),
                 );
             }
             if response.clicked() && !response.double_clicked() && !self.applying {
@@ -756,8 +989,8 @@ impl WallApp {
             }
             if response.double_clicked()
                 && !self.applying
-                && index == self.carousel.target
-                && self.carousel.is_settled()
+                && selected
+                && (self.gallery.expanded() || self.carousel.is_settled())
             {
                 apply = Some(index);
             }
@@ -786,16 +1019,19 @@ impl WallApp {
             self.apply();
         }
         // Warm the destination of fast navigation without recreating any texture.
-        if let Some(path) = self.paths.get(self.carousel.target) {
+        if progress < 1.0
+            && let Some(path) = self.paths.get(self.carousel.target)
+        {
             let _ = self.thumbnails.get(path);
         }
-        let opacity = (1.0 - (self.carousel.target as f64 - position).abs().min(1.0)) as f32;
+        let opacity = (1.0 - (self.carousel.target as f64 - position).abs().min(1.0)) as f32
+            * (1.0 - progress);
         if opacity > 0.02
             && let Some(path) = self.paths.get(self.carousel.target)
         {
             let label_rect = Rect::from_center_size(
-                Pos2::new(bounds.center().x, geometry.label_y),
-                Vec2::new(geometry.hero.x.min(bounds.width() - 130.0), 24.0),
+                Pos2::new(carousel_bounds.center().x, geometry.label_y),
+                Vec2::new(geometry.hero.x.min(carousel_bounds.width() - 130.0), 24.0),
             );
             let current = self.current.as_ref().is_some_and(|p| same_path(path, p));
             let dot_width = if current { 14.0 } else { 0.0 };
@@ -830,6 +1066,28 @@ impl WallApp {
                 });
         }
         ui.set_clip_rect(previous_clip);
+        if let Some(grid) = grid
+            && grid.max_scroll() > 0.0
+        {
+            let track = grid.viewport();
+            let height = track.height();
+            let thumb = (height * height / (height + grid.max_scroll())).max(24.0);
+            let offset = (height - thumb) * (self.gallery_scroll / grid.max_scroll());
+            let rect = Rect::from_min_size(
+                Pos2::new(track.right() + 8.0, track.top() + offset),
+                Vec2::new(2.0, thumb),
+            );
+            if rect.intersects(outer) {
+                ui.painter().rect_filled(
+                    rect,
+                    1.0,
+                    Color32::from_white_alpha((60.0 * progress) as u8),
+                );
+            }
+        }
+        if progress == 0.0 && !self.gallery.expanded() {
+            self.thumbnails.set_gallery(false);
+        }
     }
 
     fn actions(&mut self, ui: &mut egui::Ui, bounds: Rect) {
@@ -839,6 +1097,18 @@ impl WallApp {
         );
         ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
             let inner = ui.menu_button("     ", |ui| {
+                if self.state == OverlayState::Browsing && !self.paths.is_empty() {
+                    let expanded = self.gallery.expanded();
+                    let label = if expanded {
+                        "Carousel     Backspace"
+                    } else {
+                        "Gallery     ↓"
+                    };
+                    if ui.button(label).clicked() {
+                        self.set_gallery(!expanded);
+                        ui.close();
+                    }
+                }
                 if ui.button("Add images…       Ctrl+O").clicked() {
                     self.pick();
                     ui.close();
@@ -1110,6 +1380,10 @@ impl eframe::App for WallApp {
         let now = Instant::now();
         let dt = now.duration_since(self.last_frame).as_secs_f64();
         self.last_frame = now;
+        let gallery_progress = self.gallery.progress();
+        if self.gallery.advance(dt, self.reduced_motion) {
+            ctx.request_repaint();
+        }
         if self.state == OverlayState::Browsing && self.carousel.advance(dt, self.reduced_motion) {
             ctx.request_repaint();
         }
@@ -1118,6 +1392,9 @@ impl eframe::App for WallApp {
         }
         if !self.state.visible() {
             return;
+        }
+        if gallery_progress != self.gallery.progress() {
+            self.resize_gallery();
         }
         if self.reveal.opening {
             self.wheel(&ctx);
@@ -1180,7 +1457,7 @@ impl eframe::App for WallApp {
         ui.set_opacity(0.65 + 0.35 * amount);
         match self.state {
             OverlayState::Browsing if self.paths.is_empty() => self.empty(ui, bounds),
-            OverlayState::Browsing => self.gallery(ui, bounds.shrink2(Vec2::new(24.0, 0.0))),
+            OverlayState::Browsing => self.browse(ui, bounds),
             OverlayState::Preferences => self.preferences(ui, bounds),
             _ => {}
         }

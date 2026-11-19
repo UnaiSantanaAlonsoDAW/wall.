@@ -1,4 +1,18 @@
-# wall. 0.2.2 on Windows 11
+# wall. on Windows 11
+
+## 0.3.0 · Adaptive gallery
+
+19 November 2026. The gallery uses the same images, selection and native Acrylic window as the carousel. The existing critically damped motion drives both the window bounds and the shared image rectangles. The native window applies resize requests between frames and anchors them to the work area captured when it opened. [SetWindowPos](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowpos) · [GetMonitorInfoW](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getmonitorinfow)
+
+- On the actual Windows desktop, ArrowDown opened the gallery and Up returned from the first row. Backspace returned from a lower row with the selected wallpaper in the center. I exercised rapid reversals, wheel scrolling, End in a 250-image collection, file picker import, Esc and Alt+W reopening. In the ten-image collection I selected a thumbnail with the mouse and confirmed it became the carousel's center image. Applying with Enter worked from both views. The session restored and verified both original wallpapers.
+- The captured HWND sequence recorded 137 resize steps across the 250-image tests. At 96 DPI the endpoints were 1160 × 500 px and 1560 × 860 px. Every logged rectangle shared the same center at (960, 516). The ten-image gallery used a compact 1380 × 590 px window. I visually inspected the native glass, corners and both gallery sizes.
+- Formatting, Clippy with warnings denied, the Windows release build and all 39 tests passed. Grid tests cover 0, 1, 2, 10, 50 and 250 entries, shorter rows and limited rendering work for up to 1,000 entries. The suite also verifies unavailable and corrupt image handling, motion reversal, reduced motion, and the native window geometry on both attached monitors.
+- Gallery rendering only traverses the visible rows and their immediate neighbors. A maximum of 40 cached entries in gallery mode drops to 16 in the carousel and when hidden. The existing asynchronous decoder keeps its 12-request limit and drops obsolete queued work when scrolling. Small source images keep their original dimensions in the thumbnail cache.
+- The optimized hidden process used 0.078 CPU seconds over 25.019 seconds with 250 test references. Working set was 86.57 MiB and private memory was 43.27 MiB. This sample was taken before opening the carousel.
+
+Both physically attached monitors use the same DPI. Mixed DPI was checked through geometry tests. The system did not provide frame-by-frame capture, and the complete Explorer drag-and-drop interaction remains unverified. The original Windows and gallery logs are in the ignored `test-output/adaptive-gallery` directory.
+
+## 0.2.2
 
 18 November 2026. The Interval is embedded as the Windows executable icon, the tray symbol and the wordmark in Preferences. The existing carousel and Acrylic rendering code carry forward from 0.2.1.
 

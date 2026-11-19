@@ -27,6 +27,8 @@ Windows puede mostrar un aviso de SmartScreen porque el ejecutable no lleva firm
 | --- | --- |
 | **Alt+W** | Abre o cierra el carrusel. Se abre en el monitor donde está el puntero. |
 | **← / →** | Pasa al fondo anterior o siguiente. |
+| **↓** | Abre la galería desde el carrusel o baja una fila en la galería. |
+| **↑ / Retroceso** | En la galería, Arriba sube una fila y vuelve al carrusel desde la primera. Retroceso vuelve desde cualquier fila. |
 | **Inicio / Fin** | Salta a la primera o última imagen. |
 | **Enter** | Aplica el fondo seleccionado y cierra el carrusel. |
 | **Esc** | Cierra el carrusel o vuelve desde Preferencias. |
@@ -36,6 +38,8 @@ Windows puede mostrar un aviso de SmartScreen porque el ejecutable no lleva firm
 | **Ctrl+Q** | Sale de wall. |
 
 Al cerrar el carrusel, wall. sigue en la bandeja de Windows para que el atajo siga funcionando. Con clic derecho en el icono puedes abrir el carrusel, añadir imágenes, ir a Preferencias o salir.
+
+Usa la galería para ver más imágenes de un vistazo. Desplázate con la rueda, selecciona una miniatura con un clic o aplícala con doble clic. El menú también permite cambiar entre galería y carrusel. Las dos vistas comparten la selección.
 
 En **Preferences** puedes cambiar el atajo, elegir **Glass** (cristal) o **Solid** (opaco) y poner el símbolo de la bandeja en automático, claro u oscuro. El modo automático sigue el tema de la barra de tareas. El cristal viene activado por defecto y puede verse opaco si Windows desactiva la transparencia.
 

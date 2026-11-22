@@ -21,22 +21,39 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: '0'
       CARGO_PROFILE_TEST_DEBUG: '0'
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
+      - name: Check out source
+        id: source
+        working-directory: ${{ runner.temp }}
+        run: |
+          # Windows cannot use the default workspace for the repository name "wall.".
+          $directory = Join-Path $env:RUNNER_TEMP 'wall-source'
+          git init --quiet $directory
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $repository = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY.git"
+          git -C $directory fetch --quiet --depth=1 $repository $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git -C $directory checkout --quiet --detach FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "directory=$directory" >> $env:GITHUB_OUTPUT
       - name: Install Rust
+        working-directory: ${{ steps.source.outputs.directory }}
         run: rustup toolchain install $env:RUSTUP_TOOLCHAIN --profile minimal --component rustfmt --component clippy
       - name: Check formatting
+        working-directory: ${{ steps.source.outputs.directory }}
         run: cargo fmt --all --check
       - name: Run tests
+        working-directory: ${{ steps.source.outputs.directory }}
         run: cargo test --locked
       - name: Run Clippy
+        working-directory: ${{ steps.source.outputs.directory }}
         run: cargo clippy --all-targets --locked -- -D warnings
       - name: Build release executable
         if: github.event_name != 'pull_request'
+        working-directory: ${{ steps.source.outputs.directory }}
         run: cargo build --release --locked
       - name: Package and verify
         if: github.event_name != 'pull_request'
+        working-directory: ${{ steps.source.outputs.directory }}
         run: |
           ./tools/package.ps1
           python tools/check_binary.py
@@ -53,8 +70,8 @@ jobs:
         with:
           name: wall-windows-x64
           path: |
-            dist/wall.exe
-            dist/wall-*-windows-x64.zip
-            dist/SHA256SUMS.txt
+            ${{ steps.source.outputs.directory }}/dist/wall.exe
+            ${{ steps.source.outputs.directory }}/dist/wall-*-windows-x64.zip
+            ${{ steps.source.outputs.directory }}/dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14

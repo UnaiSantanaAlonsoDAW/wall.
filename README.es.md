@@ -13,11 +13,14 @@ wall. es un cambiador de fondos de código abierto para Windows 11. Pulsa **Alt+
 
 Windows puede mostrar un aviso de SmartScreen porque el ejecutable no lleva firma digital.
 
-[![La galería de wall. abierta sobre el escritorio de Windows 11](docs/gallery-demo.jpg)][demo]
+<picture>
+  <source media="(prefers-reduced-motion: no-preference)" srcset="https://raw.githubusercontent.com/UnaiSantanaAlonsoDAW/wall./main/docs/gallery-demo.gif">
+  <img src="docs/gallery-demo.jpg" alt="Cómo abrir el carrusel de wall., recorrer la galería y aplicar un fondo en Windows 11">
+</picture>
 
-[Ver la demo de 13 segundos][demo] (MP4 sin audio).
+[Descargar la demo de 13 segundos][demo] (MP4 sin audio).
 
-[demo]: https://github.com/UnaiSantanaAlonsoDAW/wall./blob/main/videos/demo.mp4
+[demo]: https://github.com/UnaiSantanaAlonsoDAW/wall./raw/refs/heads/main/videos/demo.mp4
 
 ## Pon tu primer fondo
 

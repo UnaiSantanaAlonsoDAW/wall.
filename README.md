@@ -13,11 +13,14 @@ wall. is an open-source wallpaper switcher for Windows 11. Press **Alt+W** to br
 
 Windows may show a SmartScreen prompt because the executable is unsigned.
 
-[![The wall. gallery open over a Windows 11 desktop](docs/gallery-demo.jpg)][demo]
+<picture>
+  <source media="(prefers-reduced-motion: no-preference)" srcset="https://raw.githubusercontent.com/UnaiSantanaAlonsoDAW/wall./main/docs/gallery-demo.gif">
+  <img src="docs/gallery-demo.jpg" alt="Opening the wall. carousel, browsing the gallery and applying a wallpaper on Windows 11">
+</picture>
 
-[Watch the 13-second demo][demo] (silent MP4).
+[Download the 13-second demo][demo] (silent MP4).
 
-[demo]: https://github.com/UnaiSantanaAlonsoDAW/wall./blob/main/videos/demo.mp4
+[demo]: https://github.com/UnaiSantanaAlonsoDAW/wall./raw/refs/heads/main/videos/demo.mp4
 
 ## First wallpaper
 

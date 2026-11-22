@@ -16,10 +16,15 @@ pub struct ImportContext {
     pub reveal: bool,
 }
 
+pub enum Picker {
+    Images,
+    Folder,
+}
+
 pub enum Command {
     Import(Vec<PathBuf>, ImportContext),
-    PickImages(ImportContext),
-    PickedImages(Option<Vec<PathBuf>>, ImportContext),
+    Pick(Picker, ImportContext),
+    PickedImages(Result<Option<Vec<PathBuf>>, String>, ImportContext),
     Shutdown,
     Remove(PathBuf),
     ReadStartup,
@@ -73,22 +78,33 @@ impl Worker {
                                 platform::capture_own_window(hwnd, &path).map(|()| path),
                             )
                         }
-                        Command::PickImages(context) => {
+                        Command::Pick(picker, context) => {
                             let sender = picker_sender.clone();
                             let result = thread::Builder::new()
                                 .name("wall-file-dialog".into())
                                 .spawn(move || {
-                                    let paths = rfd::FileDialog::new()
-                                        .set_title("Add wallpapers")
-                                        .add_filter("Wallpapers", &["jpg", "jpeg", "png", "webp"])
-                                        .pick_files();
+                                    let dialog = rfd::FileDialog::new();
+                                    let paths = match picker {
+                                        Picker::Images => Ok(dialog
+                                            .set_title("Add wallpapers")
+                                            .add_filter(
+                                                "Wallpapers",
+                                                &["jpg", "jpeg", "png", "webp"],
+                                            )
+                                            .pick_files()),
+                                        Picker::Folder => dialog
+                                            .set_title("Import wallpaper folder")
+                                            .pick_folder()
+                                            .map(|folder| crate::core::folder_images(&folder))
+                                            .transpose(),
+                                    };
                                     let _ = sender.send(Command::PickedImages(paths, context));
                                 });
                             match result {
                                 Ok(_) => continue,
                                 Err(error) => Event::Snapshot {
                                     collection: store.collection.clone(),
-                                    message: Some(format!("Cannot open file chooser: {error}")),
+                                    message: Some(format!("Cannot open chooser: {error}")),
                                     reopen: true,
                                     imported: None,
                                 },
@@ -195,34 +211,28 @@ impl Worker {
                         }
                         command => {
                             let before = store.collection.clone();
-                            let mut reopen = false;
+                            let reopen = matches!(command, Command::PickedImages(..));
                             let mut changed = true;
                             let mut imported = None;
                             let message = match command {
-                                Command::Import(paths, context) => {
+                                Command::Import(paths, context)
+                                | Command::PickedImages(Ok(Some(paths)), context) => {
                                     let start = store.collection.paths.len();
+                                    let empty = paths.is_empty();
                                     let report = store.import(paths);
-                                    if report.added > 0 {
+                                    changed = report.added > 0;
+                                    if changed {
                                         imported = Some((start, context));
                                     }
-                                    Some(report.to_string())
+                                    Some(if empty {
+                                        "No JPEG, PNG or WebP images found in this folder".into()
+                                    } else {
+                                        report.to_string()
+                                    })
                                 }
-                                Command::PickedImages(paths, context) => {
-                                    reopen = true;
-                                    match paths {
-                                        Some(paths) => {
-                                            let start = store.collection.paths.len();
-                                            let report = store.import(paths);
-                                            if report.added > 0 {
-                                                imported = Some((start, context));
-                                            }
-                                            Some(report.to_string())
-                                        }
-                                        None => {
-                                            changed = false;
-                                            None
-                                        }
-                                    }
+                                Command::PickedImages(result, _) => {
+                                    changed = false;
+                                    result.err()
                                 }
                                 Command::Remove(path) => {
                                     if let Some(index) =

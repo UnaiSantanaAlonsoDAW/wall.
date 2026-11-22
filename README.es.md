@@ -13,13 +13,19 @@ wall. es un cambiador de fondos de código abierto para Windows 11. Pulsa **Alt+
 
 Windows puede mostrar un aviso de SmartScreen porque el ejecutable no lleva firma digital.
 
-![El carrusel de wall. abierto sobre el escritorio de Windows 11](docs/carousel.png)
+[![La galería de wall. abierta sobre el escritorio de Windows 11](docs/gallery-demo.jpg)][demo]
+
+[Ver la demo de 13 segundos][demo] (MP4 sin audio).
+
+[demo]: https://github.com/UnaiSantanaAlonsoDAW/wall./blob/main/videos/demo.mp4
 
 ## Pon tu primer fondo
 
 1. Abre `wall.exe`. Pulsa **Choose images** o **Ctrl+O** y elige imágenes JPEG, PNG o WebP estáticas de tu equipo. También puedes arrastrarlas desde el Explorador al carrusel.
 2. Recorre las imágenes con las flechas, la rueda o el panel táctil. Si haces clic en una vista lateral, se mueve al centro.
 3. Pulsa **Enter** o haz doble clic en la imagen central para aplicarla. Hasta ese momento solo cambia la vista previa. Windows usa el mismo fondo en todos los monitores y mantiene el ajuste actual de la imagen. Si tienes una presentación de fondos activa, se sustituye al aplicar uno.
+
+La versión en desarrollo incluye **Import folder…** en el menú y en la pantalla vacía. Añade las imágenes compatibles que estén directamente dentro de la carpeta. Si añades más imágenes después, vuelve a importar la carpeta.
 
 ## Uso diario
 
@@ -65,5 +71,7 @@ cargo build --release --locked
 ```
 
 El ejecutable se genera en `target\release\wall.exe`. Ejecuta `./tools/package.ps1` en PowerShell para preparar el ZIP portátil, y `python tools/check_binary.py` para verificar el binario y el paquete. La compilación incrusta los iconos y usa la UCRT incluida en Windows. Los archivos originales de Figma están en [branding](branding) y los recursos generados en [assets](assets).
+
+El [flujo de compilación de Windows](https://github.com/UnaiSantanaAlonsoDAW/wall./actions/workflows/windows.yml) ejecuta las comprobaciones y prepara el EXE portátil, el ZIP y las sumas SHA-256 para `main` y las etiquetas de versión. Puedes descargar estos archivos desde la ejecución correspondiente.
 
 La interfaz usa Rust, egui y OpenGL. Win32 gestiona el atajo global, la bandeja y el monitor donde se abre el carrusel. El cristal Acrylic lo dibuja DWM. Un trabajador en segundo plano cambia el fondo con `IDesktopWallpaper` y guarda las preferencias, y la caché de vistas previas tiene un tamaño limitado. Las [notas de validación](VALIDATION.md) recogen las pruebas, las mediciones y los límites conocidos.

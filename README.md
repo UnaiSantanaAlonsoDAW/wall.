@@ -13,13 +13,19 @@ wall. is an open-source wallpaper switcher for Windows 11. Press **Alt+W** to br
 
 Windows may show a SmartScreen prompt because the executable is unsigned.
 
-![The wall. carousel open over a Windows 11 desktop](docs/carousel.png)
+[![The wall. gallery open over a Windows 11 desktop](docs/gallery-demo.jpg)][demo]
+
+[Watch the 13-second demo][demo] (silent MP4).
+
+[demo]: https://github.com/UnaiSantanaAlonsoDAW/wall./blob/main/videos/demo.mp4
 
 ## First wallpaper
 
 1. Open `wall.exe`. Click **Choose images** or press **Ctrl+O** to add local JPEG, PNG, or static WebP files. You can also drop files from Explorer onto the carousel.
 2. Browse with the arrow keys, the mouse wheel, or your trackpad. Click a side preview to bring it to the center.
 3. Press **Enter** or double-click the centered image to set it. Browsing only changes the preview. When you apply an image, Windows uses it on all monitors and keeps its current wallpaper fit. Applying also replaces any active Windows wallpaper slideshow.
+
+The development version also has **Import folder…** in the menu and on the empty screen. It adds supported images directly inside the folder. To add more images later, import the folder again.
 
 ## Everyday use
 
@@ -65,5 +71,7 @@ cargo build --release --locked
 ```
 
 The executable is `target\release\wall.exe`. To create the portable ZIP, run `./tools/package.ps1` in PowerShell. Run `python tools/check_binary.py` to check the executable and package. The build embeds the Windows icon and uses the UCRT already provided by Windows. Original Figma exports live in [branding](branding) and the build uses the generated resources in [assets](assets).
+
+The [Windows build workflow](https://github.com/UnaiSantanaAlonsoDAW/wall./actions/workflows/windows.yml) runs the checks and prepares the portable EXE, ZIP and SHA-256 checksums on `main` and version tags. You can download these files from the workflow run.
 
 The interface uses Rust, egui and OpenGL. Win32 handles the global shortcut, tray and monitor placement. DWM supplies the Acrylic backdrop. A background worker calls `IDesktopWallpaper` and saves settings, and a separate bounded cache handles previews. See the [validation notes](VALIDATION.md) for testing details, timings and known limits.

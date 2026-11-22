@@ -233,13 +233,32 @@ pub(crate) fn safe_image_dimensions(width: u32, height: u32) -> bool {
         && u64::from(width) * u64::from(height) <= 100_000_000
 }
 
-fn validate_reference(path: &Path) -> Result<PathBuf, String> {
-    let extension = path
-        .extension()
+fn supported_extension(path: &Path) -> bool {
+    path.extension()
         .and_then(|s| s.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    if !matches!(extension.as_str(), "jpg" | "jpeg" | "png" | "webp") {
+        .is_some_and(|extension| {
+            ["jpg", "jpeg", "png", "webp"]
+                .iter()
+                .any(|supported| extension.eq_ignore_ascii_case(supported))
+        })
+}
+
+/// Read the selected folder once. Subfolders and unrelated files are skipped.
+pub fn folder_images(folder: &Path) -> Result<Vec<PathBuf>, String> {
+    let folder_error = |error| format!("Cannot read folder {}: {error}", folder.display());
+    let mut paths = Vec::new();
+    for entry in fs::read_dir(folder).map_err(folder_error)? {
+        let path = entry.map_err(folder_error)?.path();
+        if supported_extension(&path) && path.is_file() {
+            paths.push(path);
+        }
+    }
+    paths.sort_unstable();
+    Ok(paths)
+}
+
+fn validate_reference(path: &Path) -> Result<PathBuf, String> {
+    if !supported_extension(path) {
         return Err(format!("{}: use JPEG, PNG or WebP", path.display()));
     }
     let canonical = fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -358,6 +377,30 @@ mod tests {
             image.exists(),
             "Removing a reference must not delete the original"
         );
+    }
+
+    #[test]
+    fn folder_import_uses_only_direct_images_in_stable_order() {
+        let temp = Temp::new();
+        let folder = temp.0.join("wallpapers");
+        let nested = folder.join("nested.png");
+        fs::create_dir_all(&nested).unwrap();
+        let image = image::RgbaImage::new(12, 8);
+        let first = folder.join("01.PNG");
+        let second = folder.join("02.webp");
+        image.save(&second).unwrap();
+        image
+            .save_with_format(&first, image::ImageFormat::Png)
+            .unwrap();
+        image.save(nested.join("inner.png")).unwrap();
+        fs::write(folder.join("notes.txt"), b"notes").unwrap();
+
+        let paths = folder_images(&folder).unwrap();
+        assert_eq!(paths, vec![first, second]);
+        let mut store = Store::open(Some(temp.0.join("data"))).unwrap();
+        assert_eq!(store.import(paths.clone()).added, 2);
+        assert_eq!(store.import(paths).duplicates, 2);
+        assert!(folder_images(&temp.0.join("absent")).is_err());
     }
 
     #[test]

@@ -4,7 +4,7 @@ use crate::{
     gallery::{Direction, Grid, Transition},
     platform::{self, Composition, GalleryBounds, Platform, PlatformEvent},
     thumbnails::{ThumbState, Thumbnails},
-    worker::{self, Command, Worker},
+    worker::{self, Command, Picker, Worker},
 };
 use eframe::egui::{
     self, Align, Align2, Color32, FontId, Key, Layout, Pos2, Rect, RichText, Sense, Stroke,
@@ -271,17 +271,20 @@ impl WallApp {
         ctx.request_repaint();
     }
 
-    fn pick(&mut self) {
+    fn pick(&mut self, picker: Picker) {
         if self.state == OverlayState::FilePicker || self.applying {
             return;
         }
         self.hide_now(&self.ctx.clone());
         self.state = OverlayState::FilePicker;
         self.pending_edits += 1;
-        self.send(Command::PickImages(worker::ImportContext {
-            epoch: self.interaction,
-            reveal: true,
-        }));
+        self.send(Command::Pick(
+            picker,
+            worker::ImportContext {
+                epoch: self.interaction,
+                reveal: true,
+            },
+        ));
     }
 
     fn apply(&mut self) {
@@ -426,7 +429,7 @@ impl WallApp {
                     }
                 }
                 PlatformEvent::Show => self.show(ctx),
-                PlatformEvent::Import => self.pick(),
+                PlatformEvent::Import => self.pick(Picker::Images),
                 PlatformEvent::Settings => {
                     if !self.state.visible() || !self.reveal.opening {
                         self.show(ctx);
@@ -529,11 +532,15 @@ impl WallApp {
                             platform::configure_window(self.hwnd, collection.settings.glass);
                     }
                     self.settings = collection.settings;
-                    if let Some(message) = message {
-                        self.tell(message);
-                    }
                     if reopen {
                         self.present(ctx, false);
+                    }
+                    if let Some(message) = message {
+                        if old_len == 0 && !self.paths.is_empty() {
+                            self.tell(format!("{message} · ↓ opens the gallery"));
+                        } else {
+                            self.tell(message);
+                        }
                     }
                     if self.state == OverlayState::Browsing {
                         self.preload_near_selection();
@@ -602,7 +609,7 @@ impl WallApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, Key::O)) {
-            self.pick();
+            self.pick(Picker::Images);
         }
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, Key::Comma)) {
             if self.state == OverlayState::Preferences {
@@ -771,7 +778,10 @@ impl WallApp {
                 );
                 ui.add_space(17.0);
                 if ui.button("Choose images").clicked() {
-                    self.pick();
+                    self.pick(Picker::Images);
+                }
+                if ui.button("Import folder…").clicked() {
+                    self.pick(Picker::Folder);
                 }
             },
         );
@@ -1108,7 +1118,11 @@ impl WallApp {
                     }
                 }
                 if ui.button("Add images…       Ctrl+O").clicked() {
-                    self.pick();
+                    self.pick(Picker::Images);
+                    ui.close();
+                }
+                if ui.button("Import folder…").clicked() {
+                    self.pick(Picker::Folder);
                     ui.close();
                 }
                 if ui.button("Preferences…      Ctrl+,").clicked() {
@@ -1136,7 +1150,7 @@ impl WallApp {
                 ui.painter()
                     .circle_filled(center + Vec2::new(x, 0.0), 1.35, MUTED);
             }
-            inner.response.on_hover_text("Add images and preferences");
+            inner.response.on_hover_text("More actions");
         });
     }
 

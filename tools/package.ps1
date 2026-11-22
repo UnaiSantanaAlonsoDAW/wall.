@@ -14,7 +14,7 @@ try {
     }
     $docsRoot = Join-Path $distRoot 'docs'
     New-Item -ItemType Directory -Path $docsRoot -Force | Out-Null
-    foreach ($name in @('carousel.png', 'glass-edges.png')) {
+    foreach ($name in @('carousel.png', 'gallery-demo.jpg', 'glass-edges.png')) {
         Copy-Item -LiteralPath (Join-Path $projectRoot "docs\$name") -Destination (Join-Path $docsRoot $name)
     }
     # Bundle the license files supplied by resolved Windows dependencies and fonts.
